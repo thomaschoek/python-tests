@@ -13,12 +13,22 @@ class AutoTestBase:
         """Generate a Hypothesis strategy for a given type annotation."""
         if param.default and param.default != inspect.Parameter.empty:
             return strats.just(param.default)
-        try:
-            return strats.from_type(param.annotation)
-        except BaseException as exc:
-            # TODO handle dictionaries with nested Any types
-            print(f'Failed to generate strategy for {param}: {exc}')
-            return strats.none()
+
+        param_type = param.annotation
+        param_origin = get_origin(param_type)
+        param_args = get_args(param_type)
+
+        # Handle nested types
+        if param_origin is list and param_args:
+            return strats.lists(self._generate_strategy(param_args[0]))
+        elif param_origin is dict and param_args:
+            return strats.dictionaries(self._generate_strategy(param_args[0]), self._generate_strategy(param_args[1]))
+        else:
+            try:
+                return strats.from_type(param.annotation)
+            except BaseException as exc:
+                print(f'Failed to generate strategy for {param}: {exc}')
+                return strats.none()
      
     async def _auto_test_method(self, method):
         """Automatically test a method using type hints."""
@@ -59,7 +69,5 @@ class AutoTestBase:
     async def test_public_methods_property_based(self):
         """Run tests for all methods with type annotations."""
         for _, method in self._get_public_methods(self.class_to_test):
-            print(f"Testing {method}")
-            result = await self._auto_test_method(method)
-            print('result: ', result)
+            await self._auto_test_method(method)
 
